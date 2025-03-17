@@ -622,12 +622,44 @@ type internal BlockUtil() =
                         yield point
             }
 
-        // Search backward for the character that starts this block.
+        // Check if the block you are searching for starts in front of the caret on the current line
+        // if you have the cursor on X and type 'vi{' you want it to select inside the class
+        // if you have the cursor on Y and type 'vi{' you want it to select inside the namespace
+        // but if you have the cursor on Z you want it to select the marked area 
+        //  namespace Example
+        //  {
+        //  Y   class Example
+        //  X   {
+        //          private double _field;
+        //          public double Property {Zget { return _field; } }
+        //                                  ^^^^^^^^^^^^^^^^^^^^^^^^
+        //      }
+        //  }
+        let blockStartOnCurrentLine =
+            // check if block starts behind
+            let bwd = 
+                SnapshotPointUtil.GetPointsOnLineBackward referencePoint
+                |> filterToContext
+                |> Seq.tryFind (isChar startChar)
+
+            // check if block start forward
+            let fwd =
+                SnapshotPointUtil.GetPointsOnLineForward referencePoint
+                |> filterToContext
+                |> Seq.tryFind (isChar startChar)
+
+            match bwd, fwd with
+            | None , Some _ -> fwd
+            | _ -> None
+
+        // prefer blocks that start on the current line 
         let startPoint =
-            SnapshotSpan(SnapshotUtil.GetStartPoint referencePoint.Snapshot, referencePoint)
-            |> SnapshotSpanUtil.GetPoints SearchPath.Backward
-            |> filterToContext
-            |> SeqUtil.tryFind 1 (findMatched endChar startChar)
+            if Option.isSome blockStartOnCurrentLine then blockStartOnCurrentLine
+            else 
+                SnapshotSpan(SnapshotUtil.GetStartPoint referencePoint.Snapshot, referencePoint)
+                |> SnapshotSpanUtil.GetPoints SearchPath.Backward
+                |> filterToContext
+                |> SeqUtil.tryFind 1 (findMatched endChar startChar)
 
         // Then search forward for the character that ends this block.
         let endPoint =
